@@ -1,1 +1,52 @@
+name: Build PS Vita MIDI App
 
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify repository structure
+        run: ls -R
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake make build-essential python3 wget tar
+
+      - name: Install VitaSDK
+        run: |
+          export VITASDK=$HOME/vitasdk
+          git clone --depth=1 https://github.com/vitasdk/vdpm.git $HOME/vdpm
+          cd $HOME/vdpm
+          ./bootstrap-vitasdk.sh || { echo "Error: bootstrap-vitasdk.sh failed"; exit 1; }
+          ./install-all.sh || { echo "Error: install-all.sh failed"; exit 1; }
+          echo "VITASDK=$HOME/vitasdk" >> $GITHUB_ENV
+          echo "$HOME/vitasdk/bin" >> $GITHUB_PATH
+
+      - name: Verify VitaSDK
+        run: |
+          echo "VITASDK is set to: $VITASDK"
+          test -d $VITASDK || { echo "Error: VITASDK directory does not exist!"; exit 1; }
+          test -d $VITASDK/bin || { echo "Error: VITASDK bin directory does not exist!"; exit 1; }
+        env:
+          VITASDK: ${{ env.VITASDK }}
+
+      - name: Build project
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_TOOLCHAIN_FILE=$VITASDK/share/vita.toolchain.cmake || { echo "Error: cmake failed"; exit 1; }
+          make VERBOSE=1 || { echo "Error: make failed"; exit 1; }
+        env:
+          VITASDK: ${{ env.VITASDK }}
+
+      - name: Upload VPK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PsVitaMidi
+          path: build/*.vpk
